@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Social Network Demo</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+  <style>
+    /* ----- General Styles ----- */
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f0f2f5;
+      margin: 0;
+      padding: 0 20px;
+    }
+
+    h1, h2 {
+      color: #1877f2;
+    }
+
+    button {
+      background-color: #1877f2;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    button:hover {
+      background-color: #145dbf;
+    }
+
+    input, textarea {
+      padding: 5px;
+      margin: 5px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* ----- Layout ----- */
+    .container {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      background-color: white;
+      border-radius: 10px;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      flex: 1 1 300px;
+    }
+
+    #feed .post {
+      border-bottom: 1px solid #eee;
+      padding: 10px 0;
+    }
+
+    .post img {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-top: 5px;
+    }
+
+    .comment {
+      margin-left: 20px;
+      font-size: 0.9em;
+      color: #555;
+    }
+
+    .section-title {
+      margin-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 5px;
+      color: #333;
+    }
+
+    /* ----- Responsive ----- */
+    @media (max-width: 768px) {
+      .container { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Social Network Full Demo</h1>
+
+  <div class="container">
+
+    <!-- ----- Left Column ----- -->
+    <div class="card" style="flex: 1;">
+      <h2 class="section-title">Register</h2>
+      <input type="text" id="regName" placeholder="Name">
+      <input type="email" id="regEmail" placeholder="Email">
+      <input type="password" id="regPassword" placeholder="Password">
+      <button id="registerBtn">Register</button>
+
+      <h2 class="section-title">Login</h2>
+      <input type="email" id="loginEmail" placeholder="Email">
+      <input type="password" id="loginPassword" placeholder="Password">
+      <button id="loginBtn">Login</button>
+
+      <h2 class="section-title">Profile</h2>
+      <div id="profile"></div>
+
+      <h2 class="section-title">Friends</h2>
+      <div id="friends"></div>
+    </div>
+
+    <!-- ----- Middle Column: Feed ----- -->
+    <div class="card" style="flex: 2;">
+      <h2 class="section-title">Create Post</h2>
+      <textarea id="postContent" placeholder="What's on your mind?"></textarea>
+      <input type="file" id="postMedia">
+      <button id="createPostBtn">Post</button>
+
+      <h2 class="section-title">Feed</h2>
+      <div id="feed"></div>
+    </div>
+
+    <!-- ----- Right Column: Notifications ----- -->
+    <div class="card" style="flex: 1;">
+      <h2 class="section-title">Notifications</h2>
+      <div id="notifications"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const socket = io("http://localhost:5000");
+    let token = "";
+    let currentUserId = "";
+
+    const profileDiv = document.getElementById("profile");
+    const friendsDiv = document.getElementById("friends");
+    const feedDiv = document.getElementById("feed");
+    const notificationsDiv = document.getElementById("notifications");
+
+    // ------------------ REGISTER ------------------
+    document.getElementById("registerBtn").addEventListener("click", async () => {
+      const name = document.getElementById("regName").value;
+      const email = document.getElementById("regEmail").value;
+      const password = document.getElementById("regPassword").value;
+      const res = await fetch("http://localhost:5000/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await res.json();
+      alert(data.message);
+    });
+
+    // ------------------ LOGIN ------------------
+    document.getElementById("loginBtn").addEventListener("click", async () => {
+      const email = document.getElementById("loginEmail").value;
+      const password = document.getElementById("loginPassword").value;
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (data.token) {
+        token = data.token;
+        currentUserId = data.user.id;
+        alert("Login successful");
+        loadProfile();
+        loadFeed();
+        loadFriends();
+        loadNotifications();
+      } else {
+        alert(data.message);
+      }
+    });
+
+    // ------------------ LOAD PROFILE ------------------
+    async function loadProfile() {
+      const res = await fetch(`http://localhost:5000/api/users/${currentUserId}`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const data = await res.json();
+      profileDiv.innerHTML = `<p><strong>Name:</strong> ${data.name}</p><p><strong>Email:</strong> ${data.email}</p>`;
+    }
+
+    // ------------------ FRIENDS ------------------
+    async function loadFriends() {
+      const res = await fetch(`http://localhost:5000/api/users/${currentUserId}`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const data = await res.json();
+      friendsDiv.innerHTML = "<strong>Friends:</strong> " + (data.friends ? data.friends.map(f => f.name).join(", ") : "");
+    }
+
+    // ------------------ CREATE POST ------------------
+    document.getElementById("createPostBtn").addEventListener("click", async () => {
+      const content = document.getElementById("postContent").value;
+      const mediaFile = document.getElementById("postMedia").files[0];
+      const formData = new FormData();
+      formData.append("content", content);
+      if (mediaFile) formData.append("media", mediaFile);
+
+      const res = await fetch("http://localhost:5000/api/posts", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+        body: formData
+      });
+      const post = await res.json();
+      socket.emit("newPost", post);
+      document.getElementById("postContent").value = "";
+      document.getElementById("postMedia").value = "";
+    });
+
+    // ------------------ FEED ------------------
+    async function loadFeed() {
+      const res = await fetch("http://localhost:5000/api/posts", { headers: { Authorization: "Bearer " + token }});
+      const posts = await res.json();
+      feedDiv.innerHTML = "";
+      posts.forEach(post => displayPost(post));
+    }
+
+    function displayPost(post) {
+      const div = document.createElement("div");
+      div.className = "post";
+      div.innerHTML = `
+        <p><strong>${post.user.name}</strong>: ${post.content}</p>
+        ${post.media ? `<img src="http://localhost:5000/${post.media}" alt="media">` : ""}
+        <p>Likes: ${post.likes.length} <button onclick="likePost('${post._id}')">Like</button></p>
+        <div id="comments-${post._id}"></div>
+        <input type="text" id="commentInput-${post._id}" placeholder="Add a comment">
+        <button onclick="addComment('${post._id}')">Comment</button>
+      `;
+      feedDiv.prepend(div);
+      post.comments?.forEach(comment => {
+        const cDiv = document.getElementById(`comments-${post._id}`);
+        const p = document.createElement("p");
+        p.className = "comment";
+        p.textContent = `${comment.user.name}: ${comment.content}`;
+        cDiv.appendChild(p);
+      });
+    }
+
+    async function likePost(postId) {
+      await fetch(`http://localhost:5000/api/posts/like/${postId}`, { method: "POST", headers: { Authorization: "Bearer " + token }});
+      loadFeed();
+    }
+
+    async function addComment(postId) {
+      const input = document.getElementById(`commentInput-${postId}`);
+      const content = input.value;
+      await fetch(`http://localhost:5000/api/posts/comment/${postId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ content })
+      });
+      input.value = "";
+      loadFeed();
+    }
+
+    // ------------------ NOTIFICATIONS ------------------
+    async function loadNotifications() {
+      const res = await fetch("http://localhost:5000/api/notifications", { headers: { Authorization: "Bearer " + token }});
+      const notifications = await res.json();
+      notificationsDiv.innerHTML = "";
+      notifications.forEach(n => {
+        const p = document.createElement("p");
+        p.textContent = `${n.message} [${n.type}]`;
+        notificationsDiv.appendChild(p);
+      });
+    }
+
+    // ------------------ SOCKET.IO REAL-TIME ------------------
+    socket.on("updatePosts", post => displayPost(post));
+    socket.on("updateNotifications", notification => {
+      const p = document.createElement("p");
+      p.textContent = `${notification.message} [${notification.type}]`;
+      notificationsDiv.prepend(p);
+    });
+
+  </script>
+</body>
+</html>
